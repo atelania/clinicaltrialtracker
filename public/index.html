@@ -173,14 +173,18 @@ function dedup(arr) {
   });
 }
 
-// ─── STORAGE ──────────────────────────────────────────────────────────────────
-const STORAGE_KEY = "pharma_pipeline_saved";
-function loadSaved() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); } catch { return []; } }
-function appendSaved(newItems) {
-  const existing = loadSaved();
-  const merged = dedup([...newItems, ...existing]);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-  return merged;
+// ─── SERVER-SIDE STORAGE ──────────────────────────────────────────────────────
+async function fetchSaved() {
+  try { const r = await fetch("/api/saved"); return r.ok ? r.json() : []; } catch { return []; }
+}
+async function pushSaved(newItems) {
+  try {
+    const r = await fetch("/api/saved", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({records:newItems}) });
+    return r.ok ? r.json() : newItems;
+  } catch { return newItems; }
+}
+async function clearSaved() {
+  try { await fetch("/api/saved", {method:"DELETE"}); } catch {}
 }
 
 // ─── LIVE REFRESH PANEL ───────────────────────────────────────────────────────
@@ -226,7 +230,7 @@ function LiveRefreshPanel({onSaved}) {
     setLastRun(new Date());
     setLoading(false);
     if (deduped.length > 0) {
-      const merged = appendSaved(deduped);
+      const merged = await pushSaved(deduped);
       if (onSaved) onSaved(merged);
     }
   }
@@ -344,7 +348,7 @@ function SavedRecordsPanel({records, onClear}) {
           <div style={{fontSize:15,fontWeight:700,color:"#1a3a5c"}}>{records.length} Saved Record{records.length!==1?"s":""}</div>
           <div style={{fontSize:12,color:"#6b7a8d",marginTop:2}}>Accumulated from all past Live Refresh runs. Newest first.</div>
         </div>
-        <button onClick={()=>{ if(window.confirm("Clear all saved records?")){ localStorage.removeItem(STORAGE_KEY); onClear(); }}} style={{background:"white",color:"#c62828",border:"1px solid #e57373",borderRadius:4,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Clear All</button>
+        <button onClick={()=>{ if(window.confirm("Clear all saved records?")){ clearSaved().then(()=>onClear()); }}} style={{background:"white",color:"#c62828",border:"1px solid #e57373",borderRadius:4,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Clear All</button>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {records.map((r,i)=>{
@@ -386,7 +390,8 @@ function App() {
   const [filterStatus, setFilterStatus] = useState("All");
   const [searchText, setSearchText] = useState("");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [savedRecords, setSavedRecords] = useState(() => loadSaved());
+  const [savedRecords, setSavedRecords] = useState([]);
+  useEffect(() => { fetchSaved().then(setSavedRecords); }, []);
 
   const toggle = id => setExpandedId(prev=>prev===id?null:id);
 
