@@ -205,7 +205,7 @@ function LiveRefreshPanel({onSaved}) {
 
     const allResults = [];
     for (let i = 0; i < SWEEP_QUERIES.length; i++) {
-      if (i > 0) await new Promise(r => setTimeout(r, 25000)); // 25s gap to stay under rate limit
+      if (i > 0) await new Promise(r => setTimeout(r, 60000)); // 60s gap to stay under rate limit
       setSweepProgress(prev=>prev.map((p,j)=>j===i?{...p,status:"running"}:p));
       try {
         const found = await runSweep(SWEEP_QUERIES[i].prompt);
