@@ -141,7 +141,7 @@ function RecordRow({record,isExpanded,onToggle}) {
 }
 
 // ─── SWEEP HELPERS ────────────────────────────────────────────────────────────
-async function runSweep(prompt) {
+async function runSweep(prompt, attempt=0) {
   const res = await fetch("/api/sweep", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
@@ -149,7 +149,13 @@ async function runSweep(prompt) {
   });
   if (!res.ok) {
     const err = await res.json().catch(()=>({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
+    const msg = err.error || `HTTP ${res.status}`;
+    // Retry on rate limit up to 4 times with 90s wait
+    if ((msg.toLowerCase().includes("rate limit") || msg.toLowerCase().includes("too many") || msg.toLowerCase().includes("overloaded")) && attempt < 4) {
+      await new Promise(r => setTimeout(r, 90000));
+      return runSweep(prompt, attempt + 1);
+    }
+    throw new Error(msg);
   }
   const data = await res.json();
   const text = data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
