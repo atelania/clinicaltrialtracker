@@ -1,11 +1,23 @@
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Single sweep endpoint — frontend calls this once per sweep
+const SAVED_FILE = path.join(__dirname, "saved_records.json");
+function loadSaved() { try { return JSON.parse(fs.readFileSync(SAVED_FILE, "utf8")); } catch { return []; } }
+function writeSaved(records) { fs.writeFileSync(SAVED_FILE, JSON.stringify(records, null, 2)); }
+function dedup(arr) {
+  const seen = new Set();
+  return arr.filter(r => {
+    const k = `${(r.company||"").toLowerCase().trim()}::${(r.drug||"").toLowerCase().trim()}`;
+    if (seen.has(k)) return false; seen.add(k); return true;
+  });
+}
+
+// Sweep endpoint
 app.post("/api/sweep", async (req, res) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: "Missing prompt" });
@@ -22,8 +34,8 @@ app.post("/api/sweep", async (req, res) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 3000,
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1000,
         tools: [{ type: "web_search_20250305", name: "web_search" }],
         messages: [{ role: "user", content: prompt }],
       }),
@@ -41,6 +53,20 @@ app.post("/api/sweep", async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Saved records — GET to load, POST to append, DELETE to clear
+app.get("/api/saved", (_, res) => res.json(loadSaved()));
+app.post("/api/saved", (req, res) => {
+  const { records } = req.body;
+  if (!Array.isArray(records)) return res.status(400).json({ error: "records must be array" });
+  const merged = dedup([...records, ...loadSaved()]);
+  writeSaved(merged);
+  res.json(merged);
+});
+app.delete("/api/saved", (_, res) => {
+  writeSaved([]);
+  res.json([]);
 });
 
 // Health check
